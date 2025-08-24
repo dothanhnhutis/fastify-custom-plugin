@@ -33,6 +33,20 @@ export async function buildServer() {
           durable: true,
         },
       },
+      {
+        name: "exchange-direct",
+        type: "direct",
+        options: {
+          durable: true,
+        },
+      },
+      {
+        name: "exchange-topic",
+        type: "topic",
+        options: {
+          durable: true,
+        },
+      },
     ],
     queues: [
       {
@@ -53,8 +67,8 @@ export async function buildServer() {
         options: { durable: true },
         headers: {
           "x-match": "any",
-          "x-error": "1",
-          "x-warning": "2",
+          error: "1",
+          warning: "2",
         },
       },
       {
@@ -64,9 +78,58 @@ export async function buildServer() {
         options: { durable: true },
         headers: {
           "x-match": "all",
-          "x-text": "123",
-          "x-ok": "456",
+          text: "123",
+          ok: "456",
         },
+      },
+      {
+        type: "direct",
+        name: "queue-exchange-direct-error",
+        exchange: "exchange-direct",
+        routingKey: "error",
+        options: { durable: true },
+      },
+      {
+        type: "direct",
+        name: "queue-exchange-direct-warning",
+        exchange: "exchange-direct",
+        routingKey: "warning",
+        options: { durable: true },
+      },
+      {
+        type: "direct",
+        name: "queue-exchange-direct-info",
+        exchange: "exchange-direct",
+        routingKey: "info",
+        options: { durable: true },
+      },
+      {
+        type: "topic",
+        name: "queue-exchange-topic-1",
+        exchange: "exchange-topic",
+        routingKey: "*.orange.*",
+        options: { durable: true },
+      },
+      {
+        type: "topic",
+        name: "queue-exchange-topic-2",
+        exchange: "exchange-topic",
+        routingKey: "*.*.rabbit",
+        options: { durable: true },
+      },
+      {
+        type: "topic",
+        name: "queue-exchange-topic-2",
+        exchange: "exchange-topic",
+        routingKey: "lazy.#",
+        options: { durable: true },
+      },
+      {
+        type: "topic",
+        name: "queue-exchange-topic-3",
+        exchange: "exchange-topic",
+        routingKey: "lazy.#",
+        options: { durable: true },
       },
     ],
     consumes: [
@@ -98,8 +161,52 @@ export async function buildServer() {
           channel.ack(msg);
         },
       },
+      {
+        queue: "queue-exchange-direct-error",
+        callback(msg, channel) {
+          console.log("queue-exchange-direct-error", msg.content.toString());
+          channel.ack(msg);
+        },
+      },
+      {
+        queue: "queue-exchange-direct-warning",
+        callback(msg, channel) {
+          console.log("queue-exchange-direct-warning", msg.content.toString());
+          channel.ack(msg);
+        },
+      },
+      {
+        queue: "queue-exchange-direct-info",
+        callback(msg, channel) {
+          console.log("queue-exchange-direct-info", msg.content.toString());
+          channel.ack(msg);
+        },
+      },
+      {
+        queue: "queue-exchange-topic-1",
+        callback(msg, channel) {
+          console.log("queue-exchange-topic-1", msg.content.toString());
+          channel.ack(msg);
+        },
+      },
+      {
+        queue: "queue-exchange-topic-2",
+        callback(msg, channel) {
+          console.log("queue-exchange-topic-2", msg.content.toString());
+          channel.ack(msg);
+        },
+      },
+      {
+        queue: "queue-exchange-topic-3",
+        callback(msg, channel) {
+          console.log("queue-exchange-topic-3", msg.content.toString());
+          channel.ack(msg);
+        },
+      },
     ],
   });
+
+  // await fastify.register(amqpPlugin);
 
   // fastify.setErrorHandler(errorHandler);
 

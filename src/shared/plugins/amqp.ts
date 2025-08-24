@@ -191,6 +191,14 @@ async function amqp(fastify: FastifyInstance, options: AMQPPluginOptions) {
     queues,
   });
 
+  connection.on("close", () => {
+    console.log("connection close");
+  });
+
+  connection.on("error", () => {
+    console.log("connection error");
+  });
+
   function publish(params: Publish): void {
     const { exchange, type, message, options = { persistent: true } } = params;
     const buffer = Buffer.from(JSON.stringify(message));
@@ -271,12 +279,58 @@ async function amqp(fastify: FastifyInstance, options: AMQPPluginOptions) {
       req.publish({
         type: "headers",
         exchange: "exchange-headers",
-        message: JSON.stringify({ type: "test-exchange-headers", ...req.body }),
-        headers: {
-          "x-error": "1",
-          "x-text": "123",
-          "x-ok": "456",
+        message: JSON.stringify({ ...req.body }),
+        headers: req.body,
+        options: {
+          persistent: true,
         },
+      });
+
+      reply.code(200).send("oke");
+    }
+  );
+
+  fastify.post(
+    "/amqp/exchange/direct",
+    async (
+      req: FastifyRequest<{
+        Body: {
+          routingKey: string;
+          message: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      req.publish({
+        type: "direct",
+        exchange: "exchange-direct",
+        message: JSON.stringify(req.body.message),
+        routingKey: req.body.routingKey,
+        options: {
+          persistent: true,
+        },
+      });
+
+      reply.code(200).send("oke");
+    }
+  );
+
+  fastify.post(
+    "/amqp/exchange/topic",
+    async (
+      req: FastifyRequest<{
+        Body: {
+          routingKey: string;
+          message: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      req.publish({
+        type: "topic",
+        exchange: "exchange-topic",
+        message: JSON.stringify(req.body.message),
+        routingKey: req.body.routingKey,
         options: {
           persistent: true,
         },
