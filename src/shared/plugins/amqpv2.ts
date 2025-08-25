@@ -6,12 +6,9 @@ type Consume = {
   options?: amqplib.Options.Consume;
 };
 
-interface AMQPOptions {
-  connectConfig: string | amqplib.Options.Connect;
-  exchanges?: ExchangeConfig[];
-  queues?: QueueConfig[];
-  prefetch?: number;
-  consumes?: Consume[];
+interface AMQPConnect extends amqplib.Options.Connect {
+  maxRetries?: number;
+  retryDelay?: number;
 }
 
 type QueueConfig =
@@ -46,22 +43,85 @@ export interface ExchangeConfig {
   type: "direct" | "topic" | "fanout" | "headers";
   options?: amqplib.Options.AssertExchange;
 }
-class AMQP {
-  private connectConfig: string | amqplib.Options.Connect;
-  private connection: amqplib.ChannelModel | null = null;
+
+interface AMQPOptions {
+  connectConfig: AMQPConnect;
+  exchanges?: ExchangeConfig[];
+  queues?: QueueConfig[];
+  prefetch?: number;
+  consumes?: Consume[];
+}
+
+export class AMQP {
+  private connectConfig: AMQPConnect;
+  private _connection: amqplib.ChannelModel | null = null;
 
   constructor(options: AMQPOptions) {
     this.connectConfig = options.connectConfig;
   }
 
-  async connect() {
-    if (this.connection) return;
-    try {
-      this.connection = await amqplib.connect(this.connectConfig);
-    } catch (error) {}
+  get connection(): amqplib.ChannelModel {
+    if (!this.connection) throw new Error("RabbitMQ - connection closed");
+    return this.connection;
   }
 
+  async connect() {
+    if (this._connection) return;
+
+    const {
+      maxRetries = 0,
+      retryDelay = 3000,
+      ...connectConfig
+    } = this.connectConfig;
+
+    try {
+      this._connection = await amqplib.connect(connectConfig);
+      console.log("RabbitMQ - connect success");
+
+      this._connection.on("close", () => {
+        console.log("RabbitMQ - stream connection break");
+        this._connection = null;
+
+        const retry = maxRetries <= 0 ? 0 : maxRetries;
+        const delay = retryDelay <= 0 ? 3000 : retryDelay;
+        if (retry <= 0) {
+          console.log("RabbitMQ - server down");
+        } else {
+          console.log("RabbitMQ - start retry connect");
+          this.reconnect(retry, delay);
+        }
+      });
+      console.log("bindConsumers");
+    } catch (error: unknown) {
+      throw new Error("RabbitMQ connect Error: ");
+    }
+  }
+
+  private sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async reconnect(maxRetries: number, retryDelay: number) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(
+          `RabbitMQ - thu ket noi lai lan thu ${attempt} sau ${retryDelay}ms, retring...`
+        );
+        await this.sleep(retryDelay);
+        await this.connect();
+        break;
+      } catch (error) {
+        console.log(`RabbitMQ - thu ket noi lai lan thu ${attempt} that bai`);
+        if (attempt == maxRetries)
+          console.log(`RabbitMQ - đã hết số lần thử kết nối lại.`);
+      }
+    }
+  }
+
+  private async bindConsumers() {}
+
   private async createChannel(options: {
+    connection: any;
     exchanges?: ExchangeConfig[];
     queues?: QueueConfig[];
   }): Promise<amqplib.Channel> {
