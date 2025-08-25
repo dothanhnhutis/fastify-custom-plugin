@@ -198,30 +198,40 @@ interface AMQPConnectConfig extends amqplib.Options.Connect {
 }
 
 interface ConnectionPoolOptions {
-  connections: AMQPConnectConfig[];
-  channels: [];
+  connections?: {
+    name: string;
+    maxRetries?: number;
+    retryDelay?: number;
+    clientProperties?: Partial<{
+      connection_name: string;
+      purpose: string;
+    }>;
+  }[];
+  config: string | amqplib.Options.Connect;
+  channels?: [];
 }
 
 class ConnectionPool {
   private connections: Map<string, amqplib.ChannelModel> = new Map();
   private channels: Map<string, amqplib.Channel> = new Map();
-  private connectionConfig: ConnectionPoolOptions;
+  private options: ConnectionPoolOptions;
 
-  constructor(connectionConfig: ConnectionPoolOptions) {
-    this.connectionConfig = connectionConfig;
+  constructor(options: ConnectionPoolOptions) {
+    this.options = options;
   }
 
   async connect() {
+    if (!this.options.connections) return;
     try {
-      for (let connection of this.connectionConfig.connections) {
+      for (let connection of this.options.connections) {
         const {
           maxRetries = 0,
-          retryDelay = 3000,
+          retryDelay = 5000,
           clientProperties,
           name,
-          ...connectConfig
         } = connection;
-        const conn = await amqplib.connect(connectConfig, {
+
+        const conn = await amqplib.connect(this.options.config, {
           clientProperties,
         });
 
@@ -243,6 +253,7 @@ class ConnectionPool {
 
       this.setupConnectionErrorHandling();
     } catch (error) {
+      this.closeAll();
       throw new Error("RabbitMQ connect Error: ");
     }
   }
@@ -263,7 +274,7 @@ class ConnectionPool {
     });
   }
 
-  async closeAll() {
+  private async closeAll() {
     console.log("🛑 Closing connection pool...");
 
     // Close all channels first
