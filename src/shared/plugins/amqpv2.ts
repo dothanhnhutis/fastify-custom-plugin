@@ -1,4 +1,5 @@
 import amqplib from "amqplib";
+import { Worker, isMainThread, parentPort, workerData } from "worker_threads";
 
 type Consume = {
   queue: string;
@@ -9,6 +10,7 @@ type Consume = {
 interface AMQPConnect extends amqplib.Options.Connect {
   maxRetries?: number;
   retryDelay?: number;
+  clientProperties?: Record<string, string>;
 }
 
 type QueueConfig =
@@ -75,7 +77,12 @@ export class AMQP {
     } = this.connectConfig;
 
     try {
-      this._connection = await amqplib.connect(connectConfig);
+      this._connection = await amqplib.connect(connectConfig, {
+        clientProperties: {
+          connection_name: "publisher-connection",
+          purpose: "publishing",
+        },
+      });
       console.log("RabbitMQ - connect success");
 
       this._connection.on("close", () => {
@@ -121,12 +128,11 @@ export class AMQP {
   private async bindConsumers() {}
 
   private async createChannel(options: {
-    connection: any;
     exchanges?: ExchangeConfig[];
     queues?: QueueConfig[];
   }): Promise<amqplib.Channel> {
-    const { connection, exchanges = [], queues = [] } = options;
-    const channel = await connection.createChannel();
+    const { exchanges = [], queues = [] } = options;
+    const channel = await this.connection.createChannel();
 
     // Thiết lập exchanges
     for (const exchange of exchanges) {
@@ -182,4 +188,107 @@ export class AMQP {
 
     return channel;
   }
+}
+
+interface AMQPConnectConfig extends amqplib.Options.Connect {
+  name: string;
+  maxRetries?: number;
+  retryDelay?: number;
+  clientProperties?: Record<string, string>;
+}
+
+interface ConnectionPoolOptions {
+  connections: AMQPConnectConfig[];
+  channels: [];
+}
+
+class ConnectionPool {
+  private connections: Map<string, amqplib.ChannelModel> = new Map();
+  private channels: Map<string, amqplib.Channel> = new Map();
+  private connectionConfig: ConnectionPoolOptions;
+
+  constructor(connectionConfig: ConnectionPoolOptions) {
+    this.connectionConfig = connectionConfig;
+  }
+
+  async connect() {
+    try {
+      for (let connection of this.connectionConfig.connections) {
+        const {
+          maxRetries = 0,
+          retryDelay = 3000,
+          clientProperties,
+          name,
+          ...connectConfig
+        } = connection;
+        const conn = await amqplib.connect(connectConfig, {
+          clientProperties,
+        });
+
+        // conn.on("close", () => {
+        //   console.log("RabbitMQ - stream connection break");
+
+        //   const retry = maxRetries <= 0 ? 0 : maxRetries;
+        //   const delay = retryDelay <= 0 ? 3000 : retryDelay;
+        //   if (retry <= 0) {
+        //     console.log("RabbitMQ - server down");
+        //   } else {
+        //     console.log("RabbitMQ - start retry connect");
+        //     // this.reconnect(retry, delay);
+        //   }
+        // });
+
+        this.connections.set(name, conn);
+      }
+
+      this.setupConnectionErrorHandling();
+    } catch (error) {
+      throw new Error("RabbitMQ connect Error: ");
+    }
+  }
+
+  private setupConnectionErrorHandling() {
+    this.connections.forEach((connection, name) => {
+      connection.on("error", (error) => {
+        console.error(`❌ Connection error (${name}):`, error);
+        // this.handleConnectionFailure(name);
+      });
+
+      connection.on("close", () => {
+        console.log(`🔐 Connection closed: ${name}`);
+        // this.handleConnectionFailure(name);
+
+        //  this.reconnect()
+      });
+    });
+  }
+
+  async closeAll() {
+    console.log("🛑 Closing connection pool...");
+
+    // Close all channels first
+    await Promise.all(
+      Array.from(this.channels.values()).map((channel) =>
+        channel
+          .close()
+          .catch((err) => console.error("Channel close error:", err))
+      )
+    );
+
+    // Close all connections
+    await Promise.all(
+      Array.from(this.connections.values()).map((connection) =>
+        connection
+          .close()
+          .catch((err) => console.error("Connection close error:", err))
+      )
+    );
+
+    this.channels.clear();
+    this.connections.clear();
+
+    console.log("✅ Connection pool closed");
+  }
+
+  async reconnect() {}
 }
