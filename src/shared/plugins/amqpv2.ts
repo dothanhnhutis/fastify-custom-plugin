@@ -197,7 +197,7 @@ interface AMQPConnectConfig extends amqplib.Options.Connect {
   clientProperties?: Record<string, string>;
 }
 
-interface ConnectionPoolOptions {
+interface AMQPConnectionPoolOptions {
   connections?: {
     name: string;
     maxRetries?: number;
@@ -206,17 +206,25 @@ interface ConnectionPoolOptions {
       connection_name: string;
       purpose: string;
     }>;
+    // config?: amqplib.Options.Connect;
+    channels?: {
+      name: string;
+      confirmSelect?: boolean;
+      prefetch?: number;
+    }[];
   }[];
-  config: string | amqplib.Options.Connect;
-  channels?: [];
+  config: amqplib.Options.Connect;
+  exchanges?: ExchangeConfig[];
+  queues?: QueueConfig[];
 }
 
-class ConnectionPool {
+class AMQPConnectionPool {
   private connections: Map<string, amqplib.ChannelModel> = new Map();
-  private channels: Map<string, amqplib.Channel> = new Map();
-  private options: ConnectionPoolOptions;
+  private channels: Map<string, amqplib.Channel | amqplib.ConfirmChannel> =
+    new Map();
+  private options: AMQPConnectionPoolOptions;
 
-  constructor(options: ConnectionPoolOptions) {
+  constructor(options: AMQPConnectionPoolOptions) {
     this.options = options;
   }
 
@@ -229,11 +237,17 @@ class ConnectionPool {
           retryDelay = 5000,
           clientProperties,
           name,
+          channels = [],
         } = connection;
 
         const conn = await amqplib.connect(this.options.config, {
           clientProperties,
         });
+
+        // conn.on("error", (error) => {
+        //   console.error(`❌ Connection error (${name}):`, error);
+        //   // this.handleConnectionFailure(name);
+        // });
 
         // conn.on("close", () => {
         //   console.log("RabbitMQ - stream connection break");
@@ -249,14 +263,94 @@ class ConnectionPool {
         // });
 
         this.connections.set(name, conn);
-      }
 
-      this.setupConnectionErrorHandling();
+        for (let ch of channels) {
+          let channel: amqplib.Channel | amqplib.ConfirmChannel;
+          if (ch.confirmSelect) {
+            channel = await conn.createConfirmChannel();
+          } else {
+            channel = await conn.createChannel();
+          }
+
+          if (ch.prefetch && ch.prefetch > 0) {
+            await channel.prefetch(ch.prefetch);
+          }
+          this.channels.set(ch.name, channel);
+        }
+      }
+      this.setupQueuesAndExchanges();
+
+      console.log("RabbitMQ connect success");
+
+      // this.setupConnectionErrorHandling();
     } catch (error) {
       this.closeAll();
       throw new Error("RabbitMQ connect Error: ");
     }
   }
+
+  private async setupQueuesAndExchanges() {
+    const conn = await amqplib.connect(this.options.config);
+    const channel = await conn.createChannel();
+    const { queues = [], exchanges = [] } = this.options;
+
+    // Thiết lập exchanges
+    for (const exchange of exchanges) {
+      await channel.assertExchange(
+        exchange.name,
+        exchange.type,
+        exchange.options
+      );
+    }
+
+    // Thiết lập queues
+    for (const queue of queues) {
+      switch (queue.type) {
+        case "queue":
+          await channel.assertQueue(queue.name || "", queue.options);
+          break;
+
+        case "topic":
+        case "direct":
+          const q_topic_or_direct = await channel.assertQueue(
+            queue.name || "",
+            queue.options
+          );
+          await channel.bindQueue(
+            q_topic_or_direct.queue,
+            queue.exchange,
+            queue.routingKey
+          );
+          break;
+
+        case "headers":
+          const q_headers = await channel.assertQueue(
+            queue.name || "",
+            queue.options
+          );
+          await channel.bindQueue(
+            q_headers.queue,
+            queue.exchange,
+            "",
+            queue.headers
+          );
+          break;
+
+        default:
+          const q_fanout = await channel.assertQueue(
+            queue.name || "",
+            queue.options
+          );
+          await channel.bindQueue(q_fanout.queue, queue.exchange, "");
+          break;
+      }
+    }
+
+    await channel.close();
+    await conn.close();
+  }
+
+  private async createChannel() {}
 
   private setupConnectionErrorHandling() {
     this.connections.forEach((connection, name) => {
@@ -302,4 +396,75 @@ class ConnectionPool {
   }
 
   async reconnect() {}
+
+  // Stats & monitoring
+  // getPoolStats() {
+  //   return {
+  //     connections: {
+  //       total: this.connections.size,
+  //       active: Array.from(this.connections.entries()).map(([name, conn]) => ({
+  //         name,
+  //         status: conn.connection.expectSocketClose ? "closed" : "open",
+  //       })),
+  //     },
+  //     channels: {
+  //       total: this.channels.size,
+  //       active: Array.from(this.channels.keys()),
+  //     },
+  //   };
+  // }
 }
+
+const a = new AMQPConnectionPool({
+  config: {
+    username: "root",
+    password: "secret",
+    hostname: "localhost",
+    port: 5672,
+    vhost: "queue",
+    frameMax: 131072,
+  },
+  connections: [
+    {
+      name: "publisher-connection",
+      maxRetries: 5,
+      retryDelay: 5000,
+      clientProperties: {
+        connection_name: "publisher-connection",
+        purpose: "publishing",
+      },
+      channels: [
+        {
+          name: "order-publisher",
+          confirmSelect: true,
+        },
+      ],
+    },
+    {
+      name: "consume-connection",
+      maxRetries: 5,
+      retryDelay: 5000,
+      clientProperties: {
+        connection_name: "consume-connection",
+        purpose: "consuming",
+      },
+      channels: [
+        {
+          name: "order-consumer",
+          prefetch: 100,
+        },
+      ],
+    },
+  ],
+  exchanges: [
+    {
+      name: "exchange-fanout",
+      type: "fanout",
+      options: {
+        durable: true,
+      },
+    },
+  ],
+});
+
+a.connect();

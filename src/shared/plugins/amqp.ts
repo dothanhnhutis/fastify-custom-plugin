@@ -239,106 +239,106 @@ async function amqp(fastify: FastifyInstance, options: AMQPPluginOptions) {
     await connection.close();
   });
 
-  fastify.get(
-    "/amqp/queue",
-    async (req: FastifyRequest, reply: FastifyReply) => {
-      req.sendToQueue({
-        queue: "test-queue",
-        message: "test message",
-        options: {
-          persistent: true,
-        },
-      });
+  // fastify.get(
+  //   "/amqp/queue",
+  //   async (req: FastifyRequest, reply: FastifyReply) => {
+  //     req.sendToQueue({
+  //       queue: "test-queue",
+  //       message: "test message",
+  //       options: {
+  //         persistent: true,
+  //       },
+  //     });
 
-      reply.code(200).send("oke");
-    }
-  );
+  //     reply.code(200).send("oke");
+  //   }
+  // );
 
-  fastify.get(
-    "/amqp/exchange/fanout",
-    async (req: FastifyRequest, reply: FastifyReply) => {
-      req.publish({
-        type: "fanout",
-        exchange: "exchange-fanout",
-        message: "test-exchange-fanout",
-        options: {
-          persistent: true,
-        },
-      });
+  // fastify.get(
+  //   "/amqp/exchange/fanout",
+  //   async (req: FastifyRequest, reply: FastifyReply) => {
+  //     req.publish({
+  //       type: "fanout",
+  //       exchange: "exchange-fanout",
+  //       message: "test-exchange-fanout",
+  //       options: {
+  //         persistent: true,
+  //       },
+  //     });
 
-      reply.code(200).send("oke");
-    }
-  );
+  //     reply.code(200).send("oke");
+  //   }
+  // );
 
-  fastify.post(
-    "/amqp/exchange/headers",
-    async (
-      req: FastifyRequest<{ Body: Record<string, string> }>,
-      reply: FastifyReply
-    ) => {
-      req.publish({
-        type: "headers",
-        exchange: "exchange-headers",
-        message: JSON.stringify({ ...req.body }),
-        headers: req.body,
-        options: {
-          persistent: true,
-        },
-      });
+  // fastify.post(
+  //   "/amqp/exchange/headers",
+  //   async (
+  //     req: FastifyRequest<{ Body: Record<string, string> }>,
+  //     reply: FastifyReply
+  //   ) => {
+  //     req.publish({
+  //       type: "headers",
+  //       exchange: "exchange-headers",
+  //       message: JSON.stringify({ ...req.body }),
+  //       headers: req.body,
+  //       options: {
+  //         persistent: true,
+  //       },
+  //     });
 
-      reply.code(200).send("oke");
-    }
-  );
+  //     reply.code(200).send("oke");
+  //   }
+  // );
 
-  fastify.post(
-    "/amqp/exchange/direct",
-    async (
-      req: FastifyRequest<{
-        Body: {
-          routingKey: string;
-          message: string;
-        };
-      }>,
-      reply: FastifyReply
-    ) => {
-      req.publish({
-        type: "direct",
-        exchange: "exchange-direct",
-        message: JSON.stringify(req.body.message),
-        routingKey: req.body.routingKey,
-        options: {
-          persistent: true,
-        },
-      });
+  // fastify.post(
+  //   "/amqp/exchange/direct",
+  //   async (
+  //     req: FastifyRequest<{
+  //       Body: {
+  //         routingKey: string;
+  //         message: string;
+  //       };
+  //     }>,
+  //     reply: FastifyReply
+  //   ) => {
+  //     req.publish({
+  //       type: "direct",
+  //       exchange: "exchange-direct",
+  //       message: JSON.stringify(req.body.message),
+  //       routingKey: req.body.routingKey,
+  //       options: {
+  //         persistent: true,
+  //       },
+  //     });
 
-      reply.code(200).send("oke");
-    }
-  );
+  //     reply.code(200).send("oke");
+  //   }
+  // );
 
-  fastify.post(
-    "/amqp/exchange/topic",
-    async (
-      req: FastifyRequest<{
-        Body: {
-          routingKey: string;
-          message: string;
-        };
-      }>,
-      reply: FastifyReply
-    ) => {
-      req.publish({
-        type: "topic",
-        exchange: "exchange-topic",
-        message: JSON.stringify(req.body.message),
-        routingKey: req.body.routingKey,
-        options: {
-          persistent: true,
-        },
-      });
+  // fastify.post(
+  //   "/amqp/exchange/topic",
+  //   async (
+  //     req: FastifyRequest<{
+  //       Body: {
+  //         routingKey: string;
+  //         message: string;
+  //       };
+  //     }>,
+  //     reply: FastifyReply
+  //   ) => {
+  //     req.publish({
+  //       type: "topic",
+  //       exchange: "exchange-topic",
+  //       message: JSON.stringify(req.body.message),
+  //       routingKey: req.body.routingKey,
+  //       options: {
+  //         persistent: true,
+  //       },
+  //     });
 
-      reply.code(200).send("oke");
-    }
-  );
+  //     reply.code(200).send("oke");
+  //   }
+  // );
 }
 
 export default fp(amqp, {

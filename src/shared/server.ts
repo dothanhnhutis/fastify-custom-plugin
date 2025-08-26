@@ -220,7 +220,7 @@ export async function buildServer() {
     },
   });
 
-  await amqp.connect();
+  // await amqp.connect();
 
   // await fastify.register(amqpPlugin);
 
